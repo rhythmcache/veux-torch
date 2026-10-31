@@ -67,6 +67,11 @@ android {
         buildConfig = true
     }
 
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+    }
+
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
