@@ -23,5 +23,8 @@ find_library(log-lib log)
 
 target_link_libraries(flashjni PRIVATE
     ${log-lib}
-    pthread
 )
+
+if (NOT ANDROID)
+    target_link_libraries(flashjni PRIVATE pthread)
+endif()
