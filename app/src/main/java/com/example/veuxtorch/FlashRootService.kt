@@ -11,29 +11,53 @@ class FlashRootService : RootService() {
 
     // Single-threaded executor ensuring all native hardware calls are strictly serialized
     private val worker = Executors.newSingleThreadExecutor()
-    private var stoppedCameraProvider = false
+    private val stoppedServices = mutableSetOf<String>()
+
+    /**
+     * Dynamically finds any active camera provider init service on this ROM.
+     * Prevents hardcoding issues across MIUI/HyperOS, AOSP, LineageOS, or different Android versions
+     * (e.g. vendor.camera-provider-2-4, vendor.camera-provider-2-5, camera-provider-default).
+     */
+    private fun discoverCameraProviderServices(): List<String> {
+        val out = Shell.cmd("getprop").exec().out
+        val services = mutableListOf<String>()
+        val regex = Regex("""\[init\.svc\.(.*camera.*provider.*)\]:\s*\[running\]""")
+        for (line in out) {
+            val match = regex.find(line)
+            if (match != null) {
+                val serviceName = match.groupValues[1]
+                services.add(serviceName)
+            }
+        }
+        // Fallback default if getprop pattern yielded nothing
+        if (services.isEmpty()) {
+            services.add("vendor.camera-provider-2-4")
+        }
+        return services
+    }
 
     private fun ensureCameraProviderStopped() {
-        if (!stoppedCameraProvider) {
-            // Stop background camera HAL so it releases its 24/7 exclusive lock on /dev/video0
-            Shell.cmd("stop vendor.camera-provider-2-4").exec()
-            stoppedCameraProvider = true
-            // Allow up to 300ms for camera provider process to exit and release fd
-            for (i in 0 until 6) {
-                Thread.sleep(50)
-                val fuserCheck = Shell.cmd("fuser /dev/video0").exec()
-                if (fuserCheck.out.isEmpty()) {
-                    break
-                }
+        val detected = discoverCameraProviderServices()
+        for (svc in detected) {
+            Shell.cmd("stop $svc").exec()
+            stoppedServices.add(svc)
+        }
+
+        // Wait up to 350ms for camera provider process to exit and release /dev/video0 fd
+        for (i in 0 until 7) {
+            Thread.sleep(50)
+            val lsofCheck = Shell.cmd("lsof /dev/video0").exec()
+            if (lsofCheck.out.isEmpty()) {
+                break
             }
         }
     }
 
     private fun restoreCameraProvider() {
-        if (stoppedCameraProvider) {
-            Shell.cmd("start vendor.camera-provider-2-4").exec()
-            stoppedCameraProvider = false
+        for (svc in stoppedServices) {
+            Shell.cmd("start $svc").exec()
         }
+        stoppedServices.clear()
     }
 
     private val binder = object : IFlashService.Stub() {
@@ -83,7 +107,7 @@ class FlashRootService : RootService() {
         override fun getStatus(): IntArray {
             return worker.submit(Callable {
                 val status = FlashNative.nativeStatus()
-                if (status.isNotEmpty() && status[0] == 0 && stoppedCameraProvider) {
+                if (status.isNotEmpty() && status[0] == 0 && stoppedServices.isNotEmpty()) {
                     restoreCameraProvider()
                 }
                 status

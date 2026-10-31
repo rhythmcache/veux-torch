@@ -4,7 +4,20 @@ project(flashjni C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-add_compile_options(-Wall -Wextra -O2 -fPIC)
+# High-level optimizations for speed and minimal binary footprint
+add_compile_options(
+    -O3
+    -flto
+    -fvisibility=hidden
+    -ffunction-sections
+    -fdata-sections
+    -fomit-frame-pointer
+    -Wall
+    -Wextra
+    -fPIC
+)
+
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -flto -Wl,--gc-sections -Wl,--as-needed")
 
 # flashctl sources are alongside jni_flash.c
 set(FLASHCTL_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
