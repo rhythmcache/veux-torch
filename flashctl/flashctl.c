@@ -449,17 +449,7 @@ int fl_on(int level) {
         return FL_ERR_COOLDOWN;
     }
 
-    /* Check cumulative heat protection: max 90s on in last 120s */
-    double recent_on_time = calculate_cumulative_heat(now_sec);
-    if (recent_on_time >= (double)FL_HEAT_MAX_ON_SEC) {
-        FL_LOGE("fl_on: cumulative heat limit reached (%.1f s on in last %d s)",
-                recent_on_time, FL_HEAT_WINDOW_SEC);
-        /* Apply 15s cooldown */
-        g_cooldown_until.tv_sec = now.tv_sec + FL_COOLDOWN_SEC;
-        g_cooldown_until.tv_nsec = now.tv_nsec;
-        pthread_mutex_unlock(&g_mutex);
-        return FL_ERR_COOLDOWN;
-    }
+
 
     /* Open video0 (CRM) */
     g_video_fd = open(VIDEO_PATH, O_RDWR);
@@ -1088,30 +1078,9 @@ static void *watchdog_thread_fn(void *arg) {
         clock_gettime(CLOCK_MONOTONIC, &now);
 
         double inactivity_sec = timespec_diff_sec(&g_last_heartbeat, &now);
-        double total_on_sec = timespec_diff_sec(&g_on_start_time, &now);
 
         if (inactivity_sec >= (double)FL_WATCHDOG_TIMEOUT_SEC) {
             FL_LOGI("Watchdog: inactivity cutoff after %.1f s (no heartbeat)", inactivity_sec);
-            g_cooldown_until.tv_sec = now.tv_sec + FL_COOLDOWN_SEC;
-            g_cooldown_until.tv_nsec = now.tv_nsec;
-            fl_off_locked(true);
-            break;
-        }
-
-        if (total_on_sec >= (double)FL_MAX_ON_TIME_SEC) {
-            FL_LOGI("Watchdog: max on-time cutoff after %.1f s", total_on_sec);
-            g_cooldown_until.tv_sec = now.tv_sec + FL_COOLDOWN_SEC;
-            g_cooldown_until.tv_nsec = now.tv_nsec;
-            fl_off_locked(true);
-            break;
-        }
-
-        /* Check cumulative heat */
-        double now_sec = timespec_to_double(&now);
-        double recent_on_time = calculate_cumulative_heat(now_sec);
-        if (recent_on_time >= (double)FL_HEAT_MAX_ON_SEC) {
-            FL_LOGI("Watchdog: cumulative heat limit cutoff (%.1f s on in last %d s)",
-                    recent_on_time, FL_HEAT_WINDOW_SEC);
             g_cooldown_until.tv_sec = now.tv_sec + FL_COOLDOWN_SEC;
             g_cooldown_until.tv_nsec = now.tv_nsec;
             fl_off_locked(true);
@@ -1160,14 +1129,6 @@ struct fl_status_info fl_status(void) {
     int cd_rem = 0;
     if (now_sec < cooldown_until_sec) {
         cd_rem = (int)(cooldown_until_sec - now_sec + 0.999);
-    }
-
-    /* Also check cumulative heat cooldown */
-    double recent_on_time = calculate_cumulative_heat(now_sec);
-    if (recent_on_time >= (double)FL_HEAT_MAX_ON_SEC) {
-        if (cd_rem < FL_COOLDOWN_SEC) {
-            cd_rem = FL_COOLDOWN_SEC;
-        }
     }
     info.cooldown_remaining = cd_rem;
 

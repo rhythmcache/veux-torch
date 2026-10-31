@@ -29,7 +29,7 @@ fun TorchScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Vueux Torch Controller", fontWeight = FontWeight.Bold) },
+                title = { Text("veux Torch controller", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -116,7 +116,7 @@ fun TorchScreen(
                     if (status.isOn) {
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "Active On-Time: ${status.secondsOn}s (Auto-shutoff at 60s)",
+                            text = "Active On-Time: ${status.secondsOn}s",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -180,8 +180,6 @@ fun TorchScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "• Inactivity timeout: auto-shutoff if no app heartbeat for 5s\n" +
-                               "• Max continuous on-time: 60s limit with 15s cooldown\n" +
-                               "• Cumulative heat protection: max 90s on in any 120s window\n" +
                                "• Level clamped to verified safe limit (1..$maxLevel)",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.Gray
