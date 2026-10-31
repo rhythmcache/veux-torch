@@ -6,7 +6,7 @@ Unlike the stock flashlight implementation which only allows binary on/off switc
 
 ---
 
-## ⚡ Background & Architecture
+## Background & Architecture
 
 On the Qualcomm SM6375 platform (`veux` / `peux`), the rear camera flash is driven by a Kinetic KTD2691 LED driver mapped to CCI master 1 at 7-bit slave address `0x64` (8-bit wire address `0xC8`).
 
@@ -18,7 +18,7 @@ Accessing the hardware directly bypasses higher-level camera APIs:
 
 ---
 
-## 🛡️ Safety & Safeguards
+## Safety & Safeguards
 
 - **Strict Hardware Ceiling**: Register `0x04` is permanently clamped to `0x2C` (44 decimal) inside the native library to prevent overdriving the LED.
 - **Inactivity Watchdog**: A background monotonic watchdog thread automatically powers down the LED if no application heartbeat is received for 5 seconds.
@@ -26,7 +26,7 @@ Accessing the hardware directly bypasses higher-level camera APIs:
 
 ---
 
-## 🔄 Dynamic Camera Provider Management
+## Dynamic Camera Provider Management
 
 Qualcomm's CRM kernel driver enforces strict single-client exclusivity (`if (g_dev.open_cnt >= 1) return -EALREADY;`). Under normal operation, Android's background camera HAL holds `/dev/video0` open 24/7.
 
@@ -36,24 +36,6 @@ To ensure broad compatibility across ROMs (MIUI, HyperOS, LineageOS, AOSP, Pixel
 
 ---
 
-## 🛠️ Build & Optimization
-
-The project is built with Kotlin, Jetpack Compose Material 3, and native C via CMake / Android NDK.
-
-- **Target Architecture**: `arm64-v8a` only.
-- **Native Optimization**: Compiled with `-O3`, Link-Time Optimization (`-flto`), dead code stripping (`--gc-sections`), and hidden visibility (`-fvisibility=hidden`).
-- **R8 / Minification**: Full R8 full-mode optimization enabled with resource shrinking for minimal binary size and maximum runtime speed.
-
----
-
-## 📱 System Requirements
-
-- **Device**: Xiaomi Redmi Note 11 Pro 5G / POCO X4 Pro 5G (`veux` / `peux`).
-- **OS**: Android 10+ (API 29+).
-- **Permissions**: Root access via Magisk or KernelSU (required for privileged access to `/dev/v4l-subdev15` and `/dev/video0`).
-
----
-
-## ⚖️ Disclaimer
+## Disclaimer
 
 This software is a proof-of-concept for hardware research. Driving camera flash LEDs outside of vendor HAL frameworks carries inherent risk. Use responsibly.
