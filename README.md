@@ -1,41 +1,19 @@
 # VeuxTorch
 
-**VeuxTorch** is a proof-of-concept (PoC) Android application and native C driver (`libflashctl`) designed to control the flashlight LED brightness on Xiaomi Redmi Note 11 Pro 5G / POCO X4 Pro 5G (`veux` / `peux`) devices.
+VeuxTorch is an experimental proof-of-concept Android utility and native C driver designed to unlock fine-grained flashlight brightness control on the Xiaomi Redmi Note 11 Pro 5G and POCO X4 Pro 5G, collectively known under the device codenames veux and peux. Stock Android implementations and OEM software generally restrict the rear flashlight to a binary on or off toggle running at a fixed factory current. VeuxTorch bypasses these framework limitations by interacting directly with the underlying Qualcomm Camera Control Interface, granting access to the full spectrum of discrete brightness steps supported by the physical flash driver.
 
-Unlike the stock flashlight implementation which only allows binary on/off switching at fixed factory levels, VeuxTorch communicates directly with the Qualcomm Camera Control Interface (CCI) to adjust the Kinetic KTD2691 flash driver's current register across 44 discrete hardware levels.
+## Hardware Architecture and Driver Operation
 
----
-
-## Background & Architecture
-
-On the Qualcomm SM6375 platform (`veux` / `peux`), the rear camera flash is driven by a Kinetic KTD2691 LED driver mapped to CCI master 1 at 7-bit slave address `0x64` (8-bit wire address `0xC8`).
-
-Accessing the hardware directly bypasses higher-level camera APIs:
-1. **`/dev/v4l-subdev15` (`qcom,camera-flash@0`)**: Receives I2C random write packets and custom GPIO power sequences.
-2. **`/dev/video0` (Qualcomm Camera Request Manager / CRM)**: Creates hardware sessions and manages shared DMA command buffers.
-3. **Power Sequencing**: Pulls high `tlmm 134` (`SENSOR_CUSTOM_GPIO2`, sequence type 11) via a verified 56-byte power-up buffer before dispatching I2C writes.
-4. **Brightness Register**: Adjusts register `0x04` between `0x01` (lowest dim) and `0x2C` (44 decimal, verified stock maximum).
-
----
-
-## Safety & Safeguards
-
-- **Strict Hardware Ceiling**: Register `0x04` is permanently clamped to `0x2C` (44 decimal) inside the native library to prevent overdriving the LED.
-- **Inactivity Watchdog**: A background monotonic watchdog thread automatically powers down the LED if no application heartbeat is received for 5 seconds.
-- **Clean Failure Recovery**: Every error path immediately sends hardware stream-off packets (`0x01=0x00`) and frees all acquired CRM sessions and DMA handles.
-
----
+The device platform is powered by the Qualcomm SM6375 processor, which pairs the rear flashlight with a Kinetic KTD2691 LED flash driver wired to CCI master 1 at seven-bit slave address 0x64. Rather than routing commands through high-level Android camera services, VeuxTorch communicates straight to the kernel through V4L2 device nodes. The camera flash subdevice node, located at /dev/v4l-subdev15, receives random I2C writes alongside customized power state sequences. In tandem, the Qualcomm Camera Request Manager exposed at /dev/video0 manages active hardware sessions and coordinates shared DMA command buffers. Before any brightness register updates can take effect, the hardware requires an explicit power-up sequence that pulls tlmm pin 134 high using a verified fifty-six-byte power buffer mapped to custom GPIO sequence type 11. Once energized, current levels are modulated by writing to register 0x04, sweeping smoothly from the lowest dim setting at 0x01 up to the verified stock ceiling of 0x2C, which provides forty-four distinct hardware illumination levels.
 
 ## Dynamic Camera Provider Management
 
-Qualcomm's CRM kernel driver enforces strict single-client exclusivity (`if (g_dev.open_cnt >= 1) return -EALREADY;`). Under normal operation, Android's background camera HAL holds `/dev/video0` open 24/7.
+A key challenge when interacting directly with Qualcomm camera infrastructure is the strict single-client exclusivity enforced by the Camera Request Manager kernel driver. Because the driver allows only one active process to hold /dev/video0 open at any given moment, Android's resident camera hardware abstraction layer daemon maintains a perpetual open file descriptor on the node starting from initial boot. To work reliably across different operating systems, including stock MIUI, HyperOS, LineageOS, and vanilla AOSP distributions, VeuxTorch avoids hardcoding vendor service names. The root service inspects running system properties at launch to discover the exact camera provider daemon managing the hardware, whether it runs under vendor.camera-provider-2-4, an upgraded HIDL 2.5 service, or an AIDL provider. The application gracefully pauses the detected provider before opening the device nodes, allowing the flashlight driver to claim hardware control cleanly, and automatically restarts the provider whenever the torch is turned off or the application leaves the foreground.
 
-To ensure broad compatibility across ROMs (MIUI, HyperOS, LineageOS, AOSP, Pixel Experience):
-- **No hardcoded service names**: The app dynamically queries Android init properties (`getprop | grep [init.svc.*camera*provider*]`) to discover the exact camera HAL service running on the system (e.g. `vendor.camera-provider-2-4`, `vendor.camera-provider-2-5`, or `camera-provider-default`).
-- **Automatic pause & restore**: The detected camera provider is temporarily stopped when the flashlight turns on and automatically resumed the moment the flashlight turns off or the app is closed.
+## Safeguards and Operational Safety
 
----
+Operating high-power flash hardware outside the standard camera framework demands dependable safety constraints. The native C implementation enforces a hard upper ceiling that rejects any register write exceeding 0x2C, ensuring the LED cannot be overdriven beyond factory thermal parameters. In addition, an internal watchdog thread running on a monotonic system clock monitors ongoing activity and terminates current flow if the host user interface fails to deliver a keepalive heartbeat within five seconds. Whenever a timeout or unexpected hardware error occurs, the driver immediately issues shutoff command sequences to clear the control registers, frees allocated DMA memory blocks, destroys the active Camera Request Manager session, and relinquishes the camera provider so the system camera continues operating normally without interruption.
 
 ## Disclaimer
 
-This software is a proof-of-concept for hardware research. Driving camera flash LEDs outside of vendor HAL frameworks carries inherent risk. Use responsibly.
+This project is intended strictly as a research proof of concept demonstrating low-level hardware control on Qualcomm-based mobile platforms. Driving mobile camera hardware outside vendor framework parameters carries potential risk to flash components, and the software should be evaluated with appropriate caution.
